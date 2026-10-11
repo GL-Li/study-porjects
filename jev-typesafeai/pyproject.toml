@@ -1,0 +1,15 @@
+[project]
+name = "jev-typesafeai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "anthropic>=1.11.0",
+    "cooksafe>=0.2.0",
+    "ipython>=9.17.1",
+    "matplotlib>=3.11.2",
+    "openai>=3.24.0",
+    "python-dotenv>=1.2.4",
+    "typesafe-sdk>=0.7.2",
+]
