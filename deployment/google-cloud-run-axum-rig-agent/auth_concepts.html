@@ -6,13 +6,38 @@
 <title>axum-streaming — Authentication Concepts</title>
 <style>
   :root {
-    --bg: #0f172a; --panel: #1e293b; --ink: #e2e8f0; --muted: #94a3b8;
-    --accent: #38bdf8; --accent2: #34d399; --warn: #fbbf24; --danger: #f87171;
-    --border: #334155; --code-bg: #0b1220;
+    color-scheme: light;
+    --bg: #fdf6e3; --panel: #eee8d5; --ink: #586e75; --muted: #839496;
+    --accent: #268bd2; --accent2: #859900; --warn: #b58900; --danger: #dc322f;
+    --border: #e8e0c9; --code-bg: #eee8d5;
+    --syn-comment: #93a1a1; --syn-keyword: #859900; --syn-string: #2aa198;
+    --syn-number: #d33682; --syn-function: #268bd2; --syn-type: #b58900;
+    --syn-operator: #586e75;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #002b36; --panel: #073642; --ink: #93a1a1; --muted: #657b83;
+    --accent: #268bd2; --accent2: #859900; --warn: #b58900; --danger: #dc322f;
+    --border: #073642; --code-bg: #002b36;
+    --syn-comment: #586e75; --syn-keyword: #859900; --syn-string: #2aa198;
+    --syn-number: #d33682; --syn-function: #268bd2; --syn-type: #b58900;
+    --syn-operator: #93a1a1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #002b36; --panel: #073642; --ink: #93a1a1; --muted: #657b83;
+      --accent: #268bd2; --accent2: #859900; --warn: #b58900; --danger: #dc322f;
+      --border: #073642; --code-bg: #002b36;
+      --syn-comment: #586e75; --syn-keyword: #859900; --syn-string: #2aa198;
+      --syn-number: #d33682; --syn-function: #268bd2; --syn-type: #b58900;
+      --syn-operator: #93a1a1;
+    }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.65 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 22px 100px; }
+  .wrap { max-width: 1220px; margin: 0 auto; padding: 40px 22px 100px; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 36px; align-items: start; }
+  .sidebar { position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto; align-self: start; }
   header.hero { border-bottom: 1px solid var(--border); padding-bottom: 22px; margin-bottom: 28px; }
   h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.4px; }
   h2 { font-size: 22px; margin: 44px 0 12px; padding-top: 10px; border-top: 1px solid var(--border); }
@@ -21,26 +46,26 @@
   .muted { color: var(--muted); }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e2e8f0; }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
   pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; }
-  pre code { background: none; border: 0; padding: 0; color: #cbd5e1; font-size: 12.5px; line-height: 1.55; }
+  pre code { background: none; border: 0; padding: 0; color: var(--ink); font-size: 12.5px; line-height: 1.55; }
   table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13.5px; }
   th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--border); vertical-align: top; }
   th { color: var(--accent); font-weight: 600; }
   td code { white-space: nowrap; }
-  .toc { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 6px 22px; margin: 18px 0 0; padding: 0; list-style: none; }
-  .toc a { color: var(--muted); }
-  .toc a:hover { color: var(--accent); }
-  .note { border-left: 3px solid var(--accent2); background: rgba(52,211,153,.08); padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
-  .warn { border-left: 3px solid var(--warn); background: rgba(251,191,36,.08); padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
-  .danger { border-left: 3px solid var(--danger); background: rgba(248,113,113,.08); padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
-  .pill { display: inline-block; font-size: 11px; letter-spacing: .4px; text-transform: uppercase; color: #0b1220; background: var(--accent); border-radius: 999px; padding: 2px 9px; font-weight: 700; }
+  .toc { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+  .toc a { display: block; color: var(--muted); padding: 5px 10px; border-radius: 6px; border-left: 2px solid transparent; font-size: 13.5px; }
+  .toc a:hover { color: var(--accent); background: rgba(38,139,210,.12); text-decoration: none; }
+  .note { border-left: 3px solid var(--accent2); background: rgba(133,153,0,.10); padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+  .warn { border-left: 3px solid var(--warn); background: rgba(181,137,0,.12); padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+  .danger { border-left: 3px solid var(--danger); background: rgba(220,50,47,.09); padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+  .pill { display: inline-block; font-size: 11px; letter-spacing: .4px; text-transform: uppercase; color: #fff; background: var(--accent); border-radius: 999px; padding: 2px 9px; font-weight: 700; }
   .pill.green { background: var(--accent2); }
   .pill.warn { background: var(--warn); }
   .ref { color: var(--accent2); font-size: 12.5px; }
   footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
   ul.clean { padding-left: 18px; }
-  .flow { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; color: #cbd5e1; }
+  .flow { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
   .flow b { color: var(--accent); }
   .flow i { color: var(--muted); font-style: normal; }
   .diagram { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 16px 0; }
@@ -52,21 +77,67 @@
   .dg-dec { fill: var(--code-bg); stroke: var(--warn); stroke-width: 1.5; }
   .dg-line { stroke: var(--muted); stroke-width: 1.5; fill: none; }
   .dg-line-accent { stroke: var(--accent); stroke-width: 1.5; fill: none; }
-  .dg-life { stroke: var(--border); stroke-width: 1.5; stroke-dasharray: 5 5; }
+  .dg-life { stroke: #93a1a1; stroke-width: 1.5; stroke-dasharray: 5 5; }
   .dg-text { fill: var(--ink); font: 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
   .dg-text-sm { fill: var(--muted); font: 11.5px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-  .dg-label { fill: #cbd5e1; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .dg-label { fill: var(--ink); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
   dl { margin: 14px 0; }
   dt { color: var(--accent2); font-weight: 600; margin-top: 14px; }
   dd { margin: 2px 0 0; color: var(--ink); }
+  .theme-toggle { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 18px; padding: 6px 13px; font: 600 12.5px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: var(--ink); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; cursor: pointer; transition: color .15s, border-color .15s; }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  pre code .token.comment, pre code .token.prolog, pre code .token.doctype, pre code .token.cdata { color: var(--syn-comment); font-style: italic; }
+  pre code .token.keyword, pre code .token.control, pre code .token.directive { color: var(--syn-keyword); }
+  pre code .token.string, pre code .token.char, pre code .token.attr-value { color: var(--syn-string); }
+  pre code .token.number, pre code .token.boolean, pre code .token.constant { color: var(--syn-number); }
+  pre code .token.function, pre code .token.method, pre code .token.property { color: var(--syn-function); }
+  pre code .token.class-name, pre code .token.builtin, pre code .token.macro, pre code .token.attr-name { color: var(--syn-type); }
+  pre code .token.operator, pre code .token.punctuation { color: var(--syn-operator); }
+  @media (max-width: 820px) {
+    .wrap { display: block; max-width: 980px; }
+    .sidebar { position: static; max-height: none; overflow: visible; margin-bottom: 28px; }
+    .toc { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2px 18px; }
+  }
+  @media print {
+    :root, :root[data-theme="light"], :root[data-theme="dark"] {
+      color-scheme: light;
+      --bg: #fff; --panel: #f6f6f4; --ink: #1a1a1a; --muted: #555;
+      --accent: #14507f; --accent2: #2f6b2f; --warn: #7a5200; --danger: #98231f;
+      --border: #ccc; --code-bg: #f4f4f2;
+      --syn-comment: #666; --syn-keyword: #2f6b2f; --syn-string: #0b6b63;
+      --syn-number: #8a1f5f; --syn-function: #14507f; --syn-type: #7a5200;
+      --syn-operator: #333;
+    }
+    .wrap { display: block; max-width: none; padding: 0; }
+    .sidebar, .theme-toggle { display: none; }
+    body { font-size: 12px; line-height: 1.5; }
+    a { color: #14507f; text-decoration: underline; }
+    a[href^="#"] { color: inherit; }
+    pre, figure.diagram, table, .note, .warn, .danger { break-inside: avoid; }
+    h1, h2, h3 { break-after: avoid; }
+    figure.diagram svg { max-width: 100%; }
+    footer { border-top-color: #ccc; }
+  }
 </style>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('theme');
+      if (t !== 'light' && t !== 'dark') {
+        t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+</script>
 </head>
 <body>
 <div class="wrap">
 
-<header class="hero">
-  <h1>axum-streaming — Authentication Concepts</h1>
-  <p class="muted">The general ideas behind <code>src/auth.rs</code>: how passwords are stored, what a session is, how a JWT proves who you are, how cookies carry it, and how middleware guards routes.</p>
+<aside class="sidebar">
+  <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode">Dark mode</button>
+  <nav aria-label="Table of contents">
   <ul class="toc">
     <li><a href="#model">1. The authentication model</a></li>
     <li><a href="#hashing">2. Password hashing</a></li>
@@ -81,6 +152,14 @@
     <li><a href="#limits">11. Security properties &amp; trade-offs</a></li>
     <li><a href="#glossary">12. Glossary</a></li>
   </ul>
+  </nav>
+</aside>
+
+<main class="content">
+
+<header class="hero">
+  <h1>axum-streaming — Authentication Concepts</h1>
+  <p class="muted">The general ideas behind <code>src/auth.rs</code>: how passwords are stored, what a session is, how a JWT proves who you are, how cookies carry it, and how middleware guards routes.</p>
 </header>
 
 <!-- ============================================================= -->
@@ -139,7 +218,7 @@
 <h3>Hash, then later verify</h3>
 <p>Hashing happens once at account creation / password change; verification happens on every login by re-hashing the candidate with the same salt and parameters and comparing.</p>
 
-<pre><code>// create: hash_password(password) -> PHC string
+<pre><code class="language-rust">// create: hash_password(password) -> PHC string
 let salt = SaltString::generate(&amp;mut OsRng);          // fresh random salt
 Argon2::default().hash_password(password.as_bytes(), &amp;salt)
 
@@ -195,7 +274,7 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9 . eyJzdWIiOiJhQGIuY29tIiw... . dBjftJeZ4CVP
 <h3>Claims</h3>
 <p>In this codebase the payload is the <code>Claims</code> struct serialized to JSON:</p>
 
-<pre><code>{
+<pre><code class="language-json">{
   "sub": "user@example.com",   // subject: who this token is about
   "exp": 1730000000,           // expiry, Unix seconds
   "must_change": false         // custom claim: forced password change pending
@@ -207,7 +286,7 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9 . eyJzdWIiOiJhQGIuY29tIiw... . dBjftJeZ4CVP
 <h3>Signing: HMAC-SHA256 (HS256)</h3>
 <p>The signature is <code>HMAC-SHA256(secret, header + "." + payload)</code>. The same <code>SESSION_SECRET</code> both signs and verifies (symmetric). Anyone who knows the secret can forge tokens, so the secret must be strong and private — hence the 16-character minimum and Secret Manager in production.</p>
 
-<pre><code>// sign at login
+<pre><code class="language-rust">// sign at login
 encode(&amp;Header::default(), &amp;claims, &amp;EncodingKey::from_secret(&amp;self.session_secret))
 
 // verify on every protected request
@@ -303,10 +382,10 @@ decode::&lt;Claims&gt;(&amp;token, &amp;DecodingKey::from_secret(&amp;self.sessi
 <svg viewBox="0 0 900 500" role="img" aria-label="Login sequence: browser sends credentials, server verifies and returns a signed session cookie, browser replays it">
   <defs>
     <marker id="seq-arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L7,3 L0,6 z" fill="#38bdf8"/>
+      <path d="M0,0 L7,3 L0,6 z" fill="#268bd2"/>
     </marker>
     <marker id="seq-arrow-return" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L7,3 L0,6 z" fill="#34d399"/>
+      <path d="M0,0 L7,3 L0,6 z" fill="#859900"/>
     </marker>
   </defs>
 
@@ -349,7 +428,7 @@ decode::&lt;Claims&gt;(&amp;token, &amp;DecodingKey::from_secret(&amp;self.sessi
 <svg viewBox="0 0 980 600" role="img" aria-label="Decision flow for a protected request: extract cookie, verify JWT, then reject, divert, or run the handler">
   <defs>
     <marker id="flow-arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L7,3 L0,6 z" fill="#94a3b8"/>
+      <path d="M0,0 L7,3 L0,6 z" fill="#839496"/>
     </marker>
   </defs>
 
@@ -405,13 +484,13 @@ decode::&lt;Claims&gt;(&amp;token, &amp;DecodingKey::from_secret(&amp;self.sessi
 <svg viewBox="0 0 900 620" role="img" aria-label="Onion diagram: track_activity wraps require_active, which wraps the chat handler; a failed guard returns early and skips the handler">
   <defs>
     <marker id="mw-down" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L7,3 L0,6 z" fill="#38bdf8"/>
+      <path d="M0,0 L7,3 L0,6 z" fill="#268bd2"/>
     </marker>
     <marker id="mw-up" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L7,3 L0,6 z" fill="#34d399"/>
+      <path d="M0,0 L7,3 L0,6 z" fill="#859900"/>
     </marker>
     <marker id="mw-dash" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L7,3 L0,6 z" fill="#f87171"/>
+      <path d="M0,0 L7,3 L0,6 z" fill="#dc322f"/>
     </marker>
   </defs>
 
@@ -433,7 +512,7 @@ decode::&lt;Claims&gt;(&amp;token, &amp;DecodingKey::from_secret(&amp;self.sessi
   <text class="dg-text-sm" x="225" y="228">before: read cookie → verify JWT</text>
 
   <!-- guard fails branch -->
-  <line class="dg-line" x1="410" y1="222" x2="470" y2="222" style="stroke:#f87171;stroke-dasharray:5 4" marker-end="url(#mw-dash)"/>
+  <line class="dg-line" x1="410" y1="222" x2="470" y2="222" style="stroke:#dc322f;stroke-dasharray:5 4" marker-end="url(#mw-dash)"/>
   <rect class="dg-fail" x="472" y="188" width="204" height="58" rx="8"/>
   <text class="dg-text-sm" x="574" y="212" text-anchor="middle">guard fails →</text>
   <text class="dg-text-sm" x="574" y="232" text-anchor="middle">return early (skip handler)</text>
@@ -478,7 +557,7 @@ decode::&lt;Claims&gt;(&amp;token, &amp;DecodingKey::from_secret(&amp;self.sessi
 <h3>What a handler looks like</h3>
 <p>A <strong>handler</strong> is the <code>async fn</code> a route calls to produce the response. It takes zero or more <em>extractors</em> (typed inputs pulled out of the request) and returns any type implementing <code>IntoResponse</code>. The HTTP method and path are bound to a handler at registration, so a handler itself never names its route.</p>
 
-<pre><code>// anatomy: extractors in, IntoResponse out
+<pre><code class="language-rust">// anatomy: extractors in, IntoResponse out
 async fn login(
     State(auth): State&lt;Arc&lt;AuthState&gt;&gt;,   // extractor: shared state
     Form(form): Form&lt;LoginForm&gt;,          // extractor: parsed POST body
@@ -630,6 +709,51 @@ Router::new()
   <p>Companion to <code>src/auth.rs</code> in the <strong>axum-streaming</strong> project. Line references are approximate and may drift as the file changes.</p>
 </footer>
 
+</main>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-clike.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-rust.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js"></script>
+<script>
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('theme-toggle');
+
+    function systemTheme() {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    function currentTheme() {
+      return root.getAttribute('data-theme') || systemTheme();
+    }
+    function refreshLabel() {
+      var dark = currentTheme() === 'dark';
+      btn.textContent = dark ? 'Light mode' : 'Dark mode';
+      btn.setAttribute('aria-pressed', String(dark));
+    }
+
+    btn.addEventListener('click', function () {
+      var next = currentTheme() === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+      refreshLabel();
+    });
+    refreshLabel();
+
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+      var saved = null;
+      try { saved = localStorage.getItem('theme'); } catch (e) {}
+      if (!saved) {
+        root.setAttribute('data-theme', systemTheme());
+        refreshLabel();
+      }
+    });
+
+    if (window.Prism) {
+      window.Prism.highlightAll();
+    }
+  })();
+</script>
 </body>
 </html>
