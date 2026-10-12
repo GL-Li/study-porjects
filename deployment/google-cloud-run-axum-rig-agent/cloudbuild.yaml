@@ -1,0 +1,75 @@
+# Cloud Build: build the image, push it to Artifact Registry, deploy to Cloud Run.
+#
+# One-time setup (see README):
+#   gcloud artifacts repositories create axum --repository-format=docker --location=us-central1
+#   printf '%s' "$DEEPSEEK_API_KEY" | gcloud secrets create deepseek-api-key --data-file=-
+#
+# Submit:
+#   gcloud builds submit --config cloudbuild.yaml
+
+substitutions:
+  _REGION: us-central1
+  _REPO: axum
+  _SERVICE: axum-streaming
+  _SECRET: deepseek-api-key
+  _SESSION_SECRET: session-secret
+  _CONCURRENCY: "20"
+  _MAX_INSTANCES: "5"
+  _IDLE_TIMEOUT_SECS: "1800"
+
+steps:
+  # Create the Artifact Registry repo if it does not exist yet.
+  - id: ensure-repo
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud artifacts repositories describe "${_REPO}" --location="${_REGION}" >/dev/null 2>&1 || \
+        gcloud artifacts repositories create "${_REPO}" \
+          --repository-format=docker --location="${_REGION}"
+
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+      - --region=${_REGION}
+      - --platform=managed
+      # Public access. Remove this line (and add auth) before exposing
+      # an endpoint that spends your DeepSeek credits.
+      - --allow-unauthenticated
+      - --set-secrets=DEEPSEEK_API_KEY=${_SECRET}:latest,SESSION_SECRET=${_SESSION_SECRET}:latest
+      - --set-env-vars=IDLE_TIMEOUT_SECS=${_IDLE_TIMEOUT_SECS},USERS_BUCKET=axum-streaming-users-$PROJECT_ID,USERS_OBJECT=users.json,COOKIE_SECURE=true
+      - --port=8080
+      - --timeout=3600
+      - --concurrency=${_CONCURRENCY}
+      - --min-instances=0
+      - --max-instances=${_MAX_INSTANCES}
+      - --cpu=1
+      - --memory=512Mi
+      - --startup-probe=httpGet.path=/health,httpGet.port=8080,initialDelaySeconds=2,periodSeconds=5,failureThreshold=10,timeoutSeconds=2
+      - --liveness-probe=httpGet.path=/health,httpGet.port=8080,periodSeconds=30,timeoutSeconds=2
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>axum-streaming — Authentication Concepts</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --ink: #e2e8f0; --muted: #94a3b8;
+    --accent: #38bdf8; --accent2: #34d399; --warn: #fbbf24; --danger: #f87171;
+    --border: #334155; --code-bg: #0b1220;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.65 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 22px 100px; }
+  header.hero { border-bottom: 1px solid var(--border); padding-bottom: 22px; margin-bottom: 28px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.4px; }
+  h2 { font-size: 22px; margin: 44px 0 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+  h3 { font-size: 17px; margin: 26px 0 8px; color: var(--accent); }
+  p, li { color: var(--ink); }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e2e8f0; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; }
+  pre code { background: none; border: 0; padding: 0; color: #cbd5e1; font-size: 12.5px; line-height: 1.55; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--accent); font-weight: 600; }
+  td code { white-space: nowrap; }
+  .toc { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 6px 22px; margin: 18px 0 0; padding: 0; list-style: none; }
+  .toc a { color: var(--muted); }
+  .toc a:hover { color: var(--accent); }
+  .note { border-left: 3px solid var(--accent2); background: rgba(52,211,153,.08); padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+  .warn { border-left: 3px solid var(--warn); background: rgba(251,191,36,.08); padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+  .danger { border-left: 3px solid var(--danger); background: rgba(248,113,113,.08); padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+  .pill { display: inline-block; font-size: 11px; letter-spacing: .4px; text-transform: uppercase; color: #0b1220; background: var(--accent); border-radius: 999px; padding: 2px 9px; font-weight: 700; }
+  .pill.green { background: var(--accent2); }
+  .pill.warn { background: var(--warn); }
+  .ref { color: var(--accent2); font-size: 12.5px; }
+  footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+  ul.clean { padding-left: 18px; }
+  .flow { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; color: #cbd5e1; }
+  .flow b { color: var(--accent); }
+  .flow i { color: var(--muted); font-style: normal; }
+  .diagram { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 16px 0; }
+  .diagram svg { display: block; width: 100%; height: auto; }
+  .diagram figcaption { color: var(--muted); font-size: 12.5px; margin-top: 10px; text-align: center; }
+  .dg-box { fill: var(--panel); stroke: var(--accent); stroke-width: 1.5; }
+  .dg-box-alt { fill: var(--panel); stroke: var(--accent2); stroke-width: 1.5; }
+  .dg-fail { fill: var(--panel); stroke: var(--danger); stroke-width: 1.5; }
+  .dg-dec { fill: var(--code-bg); stroke: var(--warn); stroke-width: 1.5; }
+  .dg-line { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  .dg-line-accent { stroke: var(--accent); stroke-width: 1.5; fill: none; }
+  .dg-life { stroke: var(--border); stroke-width: 1.5; stroke-dasharray: 5 5; }
+  .dg-text { fill: var(--ink); font: 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  .dg-text-sm { fill: var(--muted); font: 11.5px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  .dg-label { fill: #cbd5e1; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  dl { margin: 14px 0; }
+  dt { color: var(--accent2); font-weight: 600; margin-top: 14px; }
+  dd { margin: 2px 0 0; color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>axum-streaming — Authentication Concepts</h1>
+  <p class="muted">The general ideas behind <code>src/auth.rs</code>: how passwords are stored, what a session is, how a JWT proves who you are, how cookies carry it, and how middleware guards routes.</p>
+  <ul class="toc">
+    <li><a href="#model">1. The authentication model</a></li>
+    <li><a href="#hashing">2. Password hashing</a></li>
+    <li><a href="#sessions">3. Sessions &amp; why HTTP needs them</a></li>
+    <li><a href="#jwt">4. JSON Web Tokens (JWT)</a></li>
+    <li><a href="#secret">5. The signing secret</a></li>
+    <li><a href="#cookies">6. Cookies &amp; their security flags</a></li>
+    <li><a href="#flow">7. The end-to-end flow</a></li>
+    <li><a href="#middleware">8. Middleware &amp; route guards</a></li>
+    <li><a href="#firstrun">9. Seeding &amp; forced password change</a></li>
+    <li><a href="#storage">10. The user store</a></li>
+    <li><a href="#limits">11. Security properties &amp; trade-offs</a></li>
+    <li><a href="#glossary">12. Glossary</a></li>
+  </ul>
+</header>
+
+<!-- ============================================================= -->
+<h2 id="model">1. The authentication model</h2>
+
+<p><strong>Authentication</strong> answers "who is this?" and <strong>authorization</strong> answers "are they allowed to do this?". This app does both in one place: you prove an email + password once, then every later request carries a <em>session</em> that says who you already are.</p>
+
+<p>Two separate secrets are involved, and confusing them is the classic mistake:</p>
+
+<table>
+  <tr><th>Secret</th><th>Who knows it</th><th>Stored how</th><th>Used for</th></tr>
+  <tr>
+    <td>The user's password</td>
+    <td>Only the user</td>
+    <td><em>Hashed</em> with argon2id in <code>users.json</code> (<code>password_hash</code>)</td>
+    <td>Proving identity at <code>/login</code></td>
+  </tr>
+  <tr>
+    <td><code>SESSION_SECRET</code></td>
+    <td>The server only</td>
+    <td>An env var / Secret Manager, never persisted with users</td>
+    <td>Signing &amp; verifying session JWTs</td>
+  </tr>
+</table>
+
+<p class="ref">Code: <code>AuthState.session_secret</code> (auth.rs:46), <code>User.password_hash</code> (auth.rs:132).</p>
+
+<div class="note">
+  <strong>Key idea.</strong> The server never needs to remember who is logged in. The user carries a signed token that <em>is</em> the proof. That is what lets the service run on stateless instances that come and go.
+</div>
+
+<!-- ============================================================= -->
+<h2 id="hashing">2. Password hashing</h2>
+
+<h3>Never store the password itself</h3>
+<p>If the user store leaks, plaintext (or reversibly encrypted) passwords hand the attacker every account, and users reuse passwords elsewhere. Instead we store a <strong>one-way hash</strong>: a fixed-length fingerprint from which the original cannot be recovered, but which can be recomputed to check a candidate.</p>
+
+<h3>A hash is not just "hash it once"</h3>
+<p>Fast hashes (MD5, SHA-256) are the wrong tool: a GPU tries billions of guesses per second. Password hashing therefore uses a deliberately slow, memory-hard algorithm. This app uses <strong>argon2id</strong> via the <code>argon2</code> crate.</p>
+
+<h3>Salt</h3>
+<p>A <strong>salt</strong> is random data mixed into each hash so two users with the same password get different hashes. This defeats precomputed "rainbow table" attacks and hides which users share a password. The salt is not secret; it is stored next to the hash.</p>
+
+<h3>The PHC string</h3>
+<p>argon2 does not store the hash and salt in separate columns. It emits one self-describing text string, the <strong>PHC format</strong>:</p>
+
+<pre><code>$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG
+      │         │        │           │           └── the hash (base64)
+      │         │        │           └── the random salt (base64)
+      │         │        └── cost parameters: memory, iterations, parallelism
+      │         └── algorithm version
+      └── algorithm: argon2id</code></pre>
+
+<p>Because the parameters and salt travel with the hash, verification is self-contained and the cost can be raised later without breaking old hashes.</p>
+
+<h3>Hash, then later verify</h3>
+<p>Hashing happens once at account creation / password change; verification happens on every login by re-hashing the candidate with the same salt and parameters and comparing.</p>
+
+<pre><code>// create: hash_password(password) -> PHC string
+let salt = SaltString::generate(&amp;mut OsRng);          // fresh random salt
+Argon2::default().hash_password(password.as_bytes(), &amp;salt)
+
+// check: verify_password(candidate, stored_hash) -> bool
+let parsed = PasswordHash::new(stored_hash)?;         // parse salt+params
+Argon2::default().verify_password(candidate.as_bytes(), &amp;parsed).is_ok()</code></pre>
+
+<p class="ref">Code: <code>hash_password</code> (auth.rs:344), <code>verify_password</code> (auth.rs:354). Both use <code>OsRng</code>, the operating system's cryptographically secure RNG.</p>
+
+<div class="warn">
+  <strong>Verification is intentionally slow.</strong> argon2 is designed to take ~tens of milliseconds. That is the point — it also slows attacker brute force — so never "optimize" it away.
+</div>
+
+<!-- ============================================================= -->
+<h2 id="sessions">3. Sessions &amp; why HTTP needs them</h2>
+
+<p>HTTP is <strong>stateless</strong>: each request arrives with no memory of the previous one. Without help, the server could not tell the second request from a stranger. Authentication solves this by issuing a <strong>session</strong> at login: a short credential the client presents on every subsequent request.</p>
+
+<div class="note">
+  <strong>Definition.</strong> A <em>session</em> is the server's ongoing recognition that a client is already authenticated as a particular user, sustained across requests that are otherwise forgotten. It rests on four things: a verified identity (<code>sub</code>), a proof the client can replay (a signed JWT), a validity window (<code>exp</code>), and a carrier plus a rule that present and accept it (an <code>HttpOnly</code> cookie and the auth middleware). Here it has no server-side record — the token <em>is</em> the session.
+</div>
+
+<p>There are two broad designs:</p>
+
+<table>
+  <tr><th></th><th>Server-side session</th><th>Client-side token (this app)</th></tr>
+  <tr><td>Where state lives</td><td>Server keeps a session table keyed by an opaque ID</td><td>Token carries the state; server keeps nothing</td></tr>
+  <tr><td>Cookie holds</td><td>A random ID</td><td>A signed JWT</td></tr>
+  <tr><td>Revocation</td><td>Delete the row — instant</td><td>Hard without extra state (see §11)</td></tr>
+  <tr><td>Scales to</td><td>Needs shared session store for many instances</td><td>Any number of stateless instances</td></tr>
+</table>
+
+<p>This service is designed for stateless Cloud Run instances, so it picks the token approach: the session lives entirely in the JWT the client carries.</p>
+
+<h3>Session lifetime (TTL)</h3>
+<p>A session should not last forever. <code>SESSION_TTL_SECS</code> (default 28 800 = 8 hours) sets how long a token stays valid; when it expires, the user must log in again.</p>
+<p class="ref">Code: <code>session_ttl</code> set in <code>AuthState::from_env</code> (auth.rs:61), embedded as <code>exp</code> in <code>issue</code> (auth.rs:81), default 28 800.</p>
+
+<!-- ============================================================= -->
+<h2 id="jwt">4. JSON Web Tokens (JWT)</h2>
+
+<p>A <strong>JWT</strong> is a compact, URL-safe string with three base64url parts joined by dots:</p>
+
+<pre><code>header . payload . signature
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9 . eyJzdWIiOiJhQGIuY29tIiw... . dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk</code></pre>
+
+<ul class="clean">
+  <li><strong>Header</strong> — metadata, here <code>{"alg":"HS256","typ":"JWT"}</code>.</li>
+  <li><strong>Payload</strong> — the <em>claims</em>, i.e. the facts we assert (see below).</li>
+  <li><strong>Signature</strong> — proves the header + payload were produced by someone holding the secret and were not tampered with.</li>
+</ul>
+
+<h3>Claims</h3>
+<p>In this codebase the payload is the <code>Claims</code> struct serialized to JSON:</p>
+
+<pre><code>{
+  "sub": "user@example.com",   // subject: who this token is about
+  "exp": 1730000000,           // expiry, Unix seconds
+  "must_change": false         // custom claim: forced password change pending
+}</code></pre>
+
+<p><code>sub</code> and <code>exp</code> are registered JWT claim names; <code>must_change</code> is a private claim specific to this app. Claims are only <em>encoded</em>, not encrypted — anyone can read them, so never put secrets in a payload.</p>
+<p class="ref">Code: <code>Claims</code> (auth.rs:110).</p>
+
+<h3>Signing: HMAC-SHA256 (HS256)</h3>
+<p>The signature is <code>HMAC-SHA256(secret, header + "." + payload)</code>. The same <code>SESSION_SECRET</code> both signs and verifies (symmetric). Anyone who knows the secret can forge tokens, so the secret must be strong and private — hence the 16-character minimum and Secret Manager in production.</p>
+
+<pre><code>// sign at login
+encode(&amp;Header::default(), &amp;claims, &amp;EncodingKey::from_secret(&amp;self.session_secret))
+
+// verify on every protected request
+decode::&lt;Claims&gt;(&amp;token, &amp;DecodingKey::from_secret(&amp;self.session_secret), &amp;Validation::new(Algorithm::HS256))</code></pre>
+
+<p class="ref">Code: <code>issue</code> (auth.rs:78) and <code>claims_from_headers</code> (auth.rs:94). <code>Validation</code> enforces the algorithm <strong>and</strong> checks <code>exp</code>, rejecting expired tokens.</p>
+
+<div class="note">
+  <strong>Signed <em>with</em> the secret — not stored in it.</strong> A JWT contains only the header, the payload, and the signature; <code>SESSION_SECRET</code> is an <em>input</em> to the HMAC, never part of its output. Decoding a token reveals the claims but cannot recover the key, because HMAC is one-way: the only way to obtain the secret is to guess it, which is infeasible for a long random key. A stolen token can be replayed until <code>exp</code>, but it cannot be used to forge tokens for other users.
+</div>
+
+<div class="danger">
+  <strong>Why pin the algorithm.</strong> Passing <code>Validation::new(Algorithm::HS256)</code> avoids the classic JWT flaw where an attacker switches the header to <code>alg: none</code> or to an asymmetric algorithm to bypass verification. Always reject the algorithm you do not expect.
+</div>
+
+<!-- ============================================================= -->
+<h2 id="secret">5. The signing secret</h2>
+
+<p>Every JWT is signed with one long-lived key, <code>SESSION_SECRET</code>. It deserves its own section because it is the single point on which every token's integrity rests — and because its name invites a wrong assumption.</p>
+
+<h3>Not per-session, despite the name</h3>
+<p>The name describes <em>what it protects</em> (the session mechanism), not how long it lives. It is one value shared by every session and every instance, which is exactly what lets any instance verify a token that another instance issued — with no server-side session table.</p>
+
+<table>
+  <tr><th>Thing</th><th>Lifetime</th><th>Held by</th></tr>
+  <tr><td><code>SESSION_SECRET</code> (signing key)</td><td>Long-lived; until rotated</td><td>Server only (env / Secret Manager)</td></tr>
+  <tr><td>Session token (JWT)</td><td><code>session_ttl</code>, then <code>exp</code></td><td>Client, in the cookie</td></tr>
+  <tr><td><code>Claims</code> (identity, exp, flag)</td><td>Per token</td><td>Client, inside the signed payload</td></tr>
+</table>
+
+<h3>Where it comes from</h3>
+<p>The Rust code never creates it; <code>AuthState::from_env</code> reads it from the environment and fails fast if it is missing or shorter than 16 characters.</p>
+<ul class="clean">
+  <li><strong>Local dev:</strong> you generate it — <code>export SESSION_SECRET="$(openssl rand -base64 32)"</code> — and keep it in the shell or a gitignored <code>.env</code> (loaded by <code>dotenvy</code>).</li>
+  <li><strong>Cloud Run:</strong> <code>scripts/setup_secrets.sh</code> creates it once in Secret Manager as <code>session-secret</code>; the deploy mounts it as the <code>SESSION_SECRET</code> env var at runtime.</li>
+</ul>
+<p class="ref">Code: read at <code>AuthState::from_env</code> (auth.rs:55), copied into <code>session_secret</code> (auth.rs:70).</p>
+
+<h3>If it leaks, sessions are forged</h3>
+<p>HS256 is symmetric: the key both signs and verifies, so whoever holds it can mint a valid cookie for any user. An attacker could set <code>sub</code> to any email, push <code>exp</code> far into the future, set <code>must_change = false</code> to satisfy the route guards, and reach <code>/</code> and <code>/chat</code> — with no password. It does <em>not</em> expose passwords (those are argon2-hashed separately) or the DeepSeek/GCS secrets, though a forged session can still consume the agent indirectly.</p>
+
+<div class="danger">
+  <strong>Only rotation kills a leaked key.</strong> Because there is no server-side session state, individual tokens cannot be revoked; adding a new Secret Manager version of <code>session-secret</code> invalidates every token at once — forged ones included — and logs everyone out. A leaked <em>token</em> is bounded by <code>exp</code>; a leaked <em>secret</em> is not, so rotate immediately and treat the user store as suspect if it leaked too.
+</div>
+
+<div class="note">
+  <strong>Why symmetric, and the alternative.</strong> HS256's one key is simple and fast, but a verifier can also forge. Asymmetric signing (RS256/EdDSA) keeps the private key on the signer and lets anyone verify with a public key, so a compromised verifier cannot mint tokens — at the cost of more moving parts.
+</div>
+
+<!-- ============================================================= -->
+<h2 id="cookies">6. Cookies &amp; their security flags</h2>
+
+<p>A cookie is a small name=value pair the server sets with <code>Set-Cookie</code>; the browser then automatically sends it back in the <code>Cookie</code> header on every matching request. That automatic replay is exactly what makes cookies convenient for sessions — and dangerous if mishandled. This app sets:</p>
+
+<pre><code>session=&lt;jwt&gt;; Path=/; HttpOnly; SameSite=Lax[; Secure]</code></pre>
+
+<table>
+  <tr><th>Attribute</th><th>What it does</th><th>Why it matters</th></tr>
+  <tr>
+    <td><code>HttpOnly</code></td>
+    <td>JavaScript cannot read the cookie via <code>document.cookie</code></td>
+    <td>A cross-site-scripting (XSS) bug cannot directly steal the session token</td>
+  </tr>
+  <tr>
+    <td><code>Secure</code></td>
+    <td>Cookie is only sent over HTTPS</td>
+    <td>Stops the token being sniffed on plaintext HTTP. Controlled by <code>COOKIE_SECURE</code> (default on; must be off for local <code>http://</code>)</td>
+  </tr>
+  <tr>
+    <td><code>SameSite=Lax</code></td>
+    <td>Cookie is not sent on most cross-site requests</td>
+    <td>Mitigates cross-site request forgery (CSRF)</td>
+  </tr>
+  <tr>
+    <td><code>Path=/</code></td>
+    <td>Cookie applies to the whole site</td>
+    <td>Session needed on all routes</td>
+  </tr>
+</table>
+
+<p>Logout clears the cookie by setting it to the empty string with <code>Max-Age=0</code>, which tells the browser to delete it immediately.</p>
+<p class="ref">Code: <code>session_set_cookie</code> (auth.rs:443), <code>session_clear_cookie</code> (auth.rs:451), <code>session_cookie</code> reads it back (auth.rs:429).</p>
+
+<div class="warn">
+  <strong>HttpOnly is not a silver bullet.</strong> It protects the cookie from being <em>read</em> by scripts, but an XSS bug can still make requests <em>using</em> the cookie. Defense-in-depth matters: escape output, validate input, and keep <code>SameSite</code> on.
+</div>
+
+<!-- ============================================================= -->
+<h2 id="flow">7. The end-to-end flow</h2>
+
+<h3>Login</h3>
+<figure class="diagram">
+<svg viewBox="0 0 900 500" role="img" aria-label="Login sequence: browser sends credentials, server verifies and returns a signed session cookie, browser replays it">
+  <defs>
+    <marker id="seq-arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="seq-arrow-return" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 z" fill="#34d399"/>
+    </marker>
+  </defs>
+
+  <rect class="dg-box" x="90" y="20" width="180" height="44" rx="8"/>
+  <text class="dg-text" x="180" y="47" text-anchor="middle">Browser</text>
+  <rect class="dg-box-alt" x="600" y="20" width="220" height="44" rx="8"/>
+  <text class="dg-text" x="710" y="47" text-anchor="middle">Server (auth.rs)</text>
+
+  <line class="dg-life" x1="180" y1="64" x2="180" y2="470"/>
+  <line class="dg-life" x1="710" y1="64" x2="710" y2="470"/>
+
+  <line class="dg-line-accent" x1="180" y1="118" x2="700" y2="118" marker-end="url(#seq-arrow)"/>
+  <text class="dg-label" x="445" y="108" text-anchor="middle">POST /login  { email, password }</text>
+
+  <rect class="dg-box-alt" x="726" y="136" width="164" height="98" rx="8"/>
+  <text class="dg-text-sm" x="808" y="160" text-anchor="middle">load user store</text>
+  <text class="dg-text-sm" x="808" y="180" text-anchor="middle">find user by email</text>
+  <text class="dg-text-sm" x="808" y="200" text-anchor="middle">verify_password()</text>
+  <text class="dg-text-sm" x="808" y="220" text-anchor="middle">issue JWT</text>
+
+  <line class="dg-line" x1="710" y1="272" x2="190" y2="272" marker-end="url(#seq-arrow-return)"/>
+  <text class="dg-label" x="445" y="262" text-anchor="middle">302   Set-Cookie: session=&lt;jwt&gt;</text>
+
+  <line class="dg-line-accent" x1="180" y1="332" x2="700" y2="332" marker-end="url(#seq-arrow)"/>
+  <text class="dg-label" x="445" y="322" text-anchor="middle">GET /   (browser auto-sends Cookie: session=…)</text>
+
+  <rect class="dg-box-alt" x="726" y="350" width="164" height="78" rx="8"/>
+  <text class="dg-text-sm" x="808" y="374" text-anchor="middle">require_active:</text>
+  <text class="dg-text-sm" x="808" y="394" text-anchor="middle">decode + verify JWT</text>
+  <text class="dg-text-sm" x="808" y="414" text-anchor="middle">run handler</text>
+
+  <line class="dg-line" x1="710" y1="456" x2="190" y2="456" marker-end="url(#seq-arrow-return)"/>
+  <text class="dg-label" x="445" y="446" text-anchor="middle">200   chat UI</text>
+</svg>
+<figcaption>Login: credentials are verified once, the server returns a signed cookie, and the browser replays it automatically on the next request.</figcaption>
+</figure>
+
+<h3>Every protected request afterwards</h3>
+<figure class="diagram">
+<svg viewBox="0 0 980 600" role="img" aria-label="Decision flow for a protected request: extract cookie, verify JWT, then reject, divert, or run the handler">
+  <defs>
+    <marker id="flow-arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect class="dg-box" x="380" y="20" width="220" height="46" rx="8"/>
+  <text class="dg-text" x="490" y="48" text-anchor="middle">Incoming request</text>
+  <line class="dg-line" x1="490" y1="66" x2="490" y2="108" marker-end="url(#flow-arrow)"/>
+
+  <rect class="dg-box" x="350" y="110" width="280" height="50" rx="8"/>
+  <text class="dg-text" x="490" y="140" text-anchor="middle">read cookie → session_cookie()</text>
+  <line class="dg-line" x1="490" y1="160" x2="490" y2="194" marker-end="url(#flow-arrow)"/>
+
+  <polygon class="dg-dec" points="490,195 700,250 490,305 280,250"/>
+  <text class="dg-text" x="490" y="246" text-anchor="middle">JWT present</text>
+  <text class="dg-text" x="490" y="264" text-anchor="middle">&amp; valid?</text>
+
+  <line class="dg-line" x1="700" y1="250" x2="762" y2="250" marker-end="url(#flow-arrow)"/>
+  <text class="dg-text-sm" x="731" y="242" text-anchor="middle">no</text>
+  <rect class="dg-fail" x="764" y="204" width="200" height="92" rx="8"/>
+  <text class="dg-text" x="864" y="240" text-anchor="middle">redirect /login</text>
+  <text class="dg-text-sm" x="864" y="262" text-anchor="middle">401 / 403 JSON</text>
+  <text class="dg-text-sm" x="864" y="282" text-anchor="middle">for non-GET</text>
+
+  <line class="dg-line" x1="490" y1="305" x2="490" y2="348" marker-end="url(#flow-arrow)"/>
+  <text class="dg-text-sm" x="504" y="330" text-anchor="start">yes</text>
+
+  <polygon class="dg-dec" points="490,350 700,405 490,460 280,405"/>
+  <text class="dg-text" x="490" y="410" text-anchor="middle">must_change?</text>
+
+  <line class="dg-line" x1="280" y1="405" x2="218" y2="405" marker-end="url(#flow-arrow)"/>
+  <text class="dg-text-sm" x="249" y="397" text-anchor="middle">yes</text>
+  <rect class="dg-fail" x="16" y="359" width="200" height="92" rx="8"/>
+  <text class="dg-text" x="116" y="395" text-anchor="middle">redirect</text>
+  <text class="dg-text" x="116" y="415" text-anchor="middle">/change-password</text>
+  <text class="dg-text-sm" x="116" y="435" text-anchor="middle">403 for non-GET</text>
+
+  <line class="dg-line" x1="490" y1="460" x2="490" y2="505" marker-end="url(#flow-arrow)"/>
+  <text class="dg-text-sm" x="504" y="485" text-anchor="start">no</text>
+  <rect class="dg-box-alt" x="350" y="507" width="280" height="66" rx="8"/>
+  <text class="dg-text" x="490" y="536" text-anchor="middle">insert Claims → run handler</text>
+  <text class="dg-text" x="490" y="557" text-anchor="middle">200 response</text>
+</svg>
+<figcaption>Guarding a request: the middleware extracts the cookie and verifies the JWT, then rejects it (missing/expired), diverts to the password change (still pending), or runs the handler with the claims attached.</figcaption>
+</figure>
+
+<p>Note the asymmetry: GET requests get a redirect (good for a browser), while non-GET requests get a JSON <code>401</code>/<code>403</code> (good for <code>/chat</code> and API clients).</p>
+
+<!-- ============================================================= -->
+<h2 id="middleware">8. Middleware &amp; route guards</h2>
+
+<p><strong>Middleware</strong> is code that runs around a handler: it can inspect the request, decide to stop, or pass control on with <code>next.run(req)</code>. The diagram below shows how a handler sits <em>inside</em> its middleware — each layer does its "before" work on the way in and its "after" work on the way out, and a guard can bail out before the handler is ever reached.</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 900 620" role="img" aria-label="Onion diagram: track_activity wraps require_active, which wraps the chat handler; a failed guard returns early and skips the handler">
+  <defs>
+    <marker id="mw-down" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="mw-up" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 z" fill="#34d399"/>
+    </marker>
+    <marker id="mw-dash" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 z" fill="#f87171"/>
+    </marker>
+  </defs>
+
+  <!-- request / response lanes -->
+  <line class="dg-line-accent" x1="100" y1="80" x2="100" y2="540" marker-end="url(#mw-down)"/>
+  <text class="dg-text-sm" x="100" y="70" text-anchor="middle">request</text>
+  <line class="dg-line" x1="800" y1="540" x2="800" y2="80" marker-end="url(#mw-up)"/>
+  <text class="dg-text-sm" x="800" y="70" text-anchor="middle">response</text>
+
+  <!-- outer layer: track_activity -->
+  <rect class="dg-box" x="150" y="70" width="600" height="480" rx="16"/>
+  <text class="dg-text" x="175" y="102">track_activity</text>
+  <text class="dg-text-sm" x="175" y="122">global .layer() — runs for every request</text>
+
+  <!-- inner layer: require_active -->
+  <rect class="dg-box-alt" x="200" y="150" width="500" height="340" rx="14"/>
+  <text class="dg-text" x="225" y="182">require_active</text>
+  <text class="dg-text-sm" x="225" y="202">route_layer() — matched routes only</text>
+  <text class="dg-text-sm" x="225" y="228">before: read cookie → verify JWT</text>
+
+  <!-- guard fails branch -->
+  <line class="dg-line" x1="410" y1="222" x2="470" y2="222" style="stroke:#f87171;stroke-dasharray:5 4" marker-end="url(#mw-dash)"/>
+  <rect class="dg-fail" x="472" y="188" width="204" height="58" rx="8"/>
+  <text class="dg-text-sm" x="574" y="212" text-anchor="middle">guard fails →</text>
+  <text class="dg-text-sm" x="574" y="232" text-anchor="middle">return early (skip handler)</text>
+
+  <!-- pass down to handler -->
+  <line class="dg-line-accent" x1="340" y1="240" x2="340" y2="268" marker-end="url(#mw-down)"/>
+  <text class="dg-text-sm" x="352" y="258" text-anchor="start">passes</text>
+
+  <!-- handler -->
+  <rect class="dg-box" x="270" y="270" width="360" height="130" rx="12"/>
+  <text class="dg-text" x="450" y="330" text-anchor="middle">chat handler</text>
+  <text class="dg-text-sm" x="450" y="352" text-anchor="middle">computes the response</text>
+
+  <text class="dg-text-sm" x="225" y="440">after: response travels back up</text>
+  <text class="dg-text-sm" x="175" y="525">after: timestamp activity again</text>
+</svg>
+<figcaption>Handlers sit inside middleware. <code>track_activity</code> wraps <code>require_active</code>, which wraps the <code>chat</code> handler. On the way in each layer runs its "before" logic; the guard can return a response itself and never call <code>next</code>, so the handler is skipped. On success the handler's response unwinds back out through the same layers.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Guard</th><th>Allows</th><th>Used on</th></tr>
+  <tr>
+    <td><code>require_session</code></td>
+    <td>Any valid session, including one mid-forced-change</td>
+    <td><code>/change-password</code></td>
+  </tr>
+  <tr>
+    <td><code>require_active</code></td>
+    <td>Only a session with <code>must_change == false</code></td>
+    <td><code>/</code> and <code>/chat</code></td>
+  </tr>
+</table>
+
+<p>The middlewares also demonstrate two useful patterns:</p>
+<ul class="clean">
+  <li><strong>Auth is centralized.</strong> Handlers never parse cookies themselves; they simply declare they need auth.</li>
+  <li><strong>Claims travel in request extensions.</strong> After verification, the claims are stored via <code>req.extensions_mut().insert(claims)</code> so a handler can receive them with the <code>Extension&lt;Claims&gt;</code> extractor — see <code>change_password</code> using <code>claims.sub</code> to find the right user.</li>
+</ul>
+
+<p class="ref">Code: <code>require_active</code> (auth.rs:476), <code>require_session</code> (auth.rs:512), <code>Extension&lt;Claims&gt;</code> in <code>change_password</code> (auth.rs:600).</p>
+
+<h3>What a handler looks like</h3>
+<p>A <strong>handler</strong> is the <code>async fn</code> a route calls to produce the response. It takes zero or more <em>extractors</em> (typed inputs pulled out of the request) and returns any type implementing <code>IntoResponse</code>. The HTTP method and path are bound to a handler at registration, so a handler itself never names its route.</p>
+
+<pre><code>// anatomy: extractors in, IntoResponse out
+async fn login(
+    State(auth): State&lt;Arc&lt;AuthState&gt;&gt;,   // extractor: shared state
+    Form(form): Form&lt;LoginForm&gt;,          // extractor: parsed POST body
+) -&gt; Response {                            // IntoResponse (redirect + cookie)
+    // ...business logic...
+}
+
+// registration wires method + path to the handler
+Router::new()
+    .route("/health", get(health))
+    .route("/login", get(login_page).post(login))
+    .route("/chat", post(chat))</code></pre>
+
+<p>Because the inputs and output are just Rust types, handlers range from trivial to rich — the method/path wiring stays fixed while the signature does the work:</p>
+
+<table>
+  <tr><th>Route</th><th>Handler</th><th>Extractors (in)</th><th>Returns (out)</th></tr>
+  <tr><td><code>GET /health</code></td><td><code>health</code> (main.rs:95)</td><td>—</td><td><code>&amp;'static str</code></td></tr>
+  <tr><td><code>GET /</code></td><td><code>index</code> (main.rs:99)</td><td>—</td><td><code>Html</code></td></tr>
+  <tr><td><code>GET /login</code></td><td><code>login_page</code> (auth.rs:547)</td><td>—</td><td><code>Html</code></td></tr>
+  <tr><td><code>POST /login</code></td><td><code>login</code> (auth.rs:558)</td><td><code>State</code>, <code>Form&lt;LoginForm&gt;</code></td><td><code>Response</code> (redirect + <code>Set-Cookie</code>)</td></tr>
+  <tr><td><code>POST /change-password</code></td><td><code>change_password</code> (auth.rs:598)</td><td><code>State</code>, <code>Extension&lt;Claims&gt;</code>, <code>Form</code></td><td><code>Response</code></td></tr>
+  <tr><td><code>POST /chat</code></td><td><code>chat</code> (main.rs:103)</td><td><code>State</code>, <code>Json&lt;ChatRequest&gt;</code></td><td><code>Sse&lt;impl Stream&gt;</code></td></tr>
+  <tr><td><code>POST /logout</code></td><td><code>logout</code> (auth.rs:655)</td><td><code>State</code></td><td><code>Response</code></td></tr>
+</table>
+
+<div class="note">
+  <strong>Handlers vs middleware, in one line each.</strong> A handler <em>computes</em> the response for one route; middleware <em>wraps</em> that computation and decides whether it runs at all. Note <code>change_password</code>: it never reads the cookie itself — the guard runs first, and the handler just declares <code>Extension&lt;Claims&gt;</code> to receive what the middleware verified.
+</div>
+
+<!-- ============================================================= -->
+<h2 id="firstrun">9. Seeding &amp; forced password change</h2>
+
+<p>So the app is usable before anyone has an account, it <strong>seeds</strong> configured emails on first run with a random <strong>temporary password</strong> printed once to the log. Every seeded account is flagged <code>must_change_password = true</code>.</p>
+
+<p>That flag is the reason <code>require_active</code> exists: even with a valid session, a freshly seeded user can reach only <code>/change-password</code> until they set their own password. On a successful change the server:</p>
+<ol class="clean">
+  <li>re-checks the <em>current</em> password (so a borrowed session cannot silently reset it),</li>
+  <li>validates the new one (length, confirmation match),</li>
+  <li>stores a fresh <code>password_hash</code> and clears <code>must_change_password</code>,</li>
+  <li>re-issues the session cookie with <code>must_change = false</code>.</li>
+</ol>
+
+<p class="ref">Code: <code>ensure_seeded</code> (auth.rs:377), <code>login</code> destination logic (auth.rs:585), <code>change_password</code> (auth.rs:598).</p>
+
+<div class="note">
+  <strong>Why "change on first login"?</strong> A password sent through a log or chat is a shared secret with a short, known lifetime. Forcing a personal password the moment the user is in limits how long that temporary secret is useful.
+</div>
+
+<!-- ============================================================= -->
+<h2 id="storage">10. The user store</h2>
+
+<p>Accounts live in one JSON document, <code>UserStore { users: Vec&lt;User&gt; }</code>, loaded and saved as a whole. The <code>Storage</code> enum hides <em>where</em> that document lives behind one interface, so the auth logic above does not care:</p>
+
+<table>
+  <tr><th>Variant</th><th>Backed by</th><th>Used when</th></tr>
+  <tr><td><code>Storage::File</code></td><td>A local file (<code>USERS_FILE</code>)</td><td>Development</td></tr>
+  <tr><td><code>Storage::Gcs</code></td><td>A Google Cloud Storage object (<code>USERS_BUCKET</code>)</td><td>Cloud Run, where the filesystem is ephemeral</td></tr>
+</table>
+
+<p>This is the <strong>repository / abstraction</strong> idea: swap the backing store without touching authentication. The GCS variant even fetches its own short-lived OAuth token from the instance metadata server, caching it until near expiry.</p>
+
+<p class="ref">Code: <code>Storage</code> (auth.rs:140), <code>load</code> (auth.rs:169), <code>save</code> (auth.rs:188), <code>save_if_absent</code> (auth.rs:200), <code>Gcs::token</code> (auth.rs:242).</p>
+
+<div class="warn">
+  <strong>Concurrency caveat.</strong> The whole document is read-modify-written, so simultaneous writers can lose updates. <code>save_if_absent</code> mitigates the first-write race (via <code>try_exists</code> locally, <code>ifGenerationMatch=0</code> on GCS) but ordinary concurrent edits are still last-write-wins.
+</div>
+
+<!-- ============================================================= -->
+<h2 id="limits">11. Security properties &amp; trade-offs</h2>
+
+<table>
+  <tr><th>Property</th><th>How it is achieved</th><th>Residual risk</th></tr>
+  <tr>
+    <td>Passwords not recoverable</td>
+    <td>argon2id + per-user salt</td>
+    <td>Weak user passwords still guessable offline if the store leaks</td>
+  </tr>
+  <tr>
+    <td>Token cannot be forged or altered</td>
+    <td>HS256 signature with a private secret; algorithm pinned</td>
+    <td>Secret leak = full compromise</td>
+  </tr>
+  <tr>
+    <td>Token cannot be stolen via XSS</td>
+    <td><code>HttpOnly</code> cookie</td>
+    <td>XSS can still act as the user (send requests)</td>
+  </tr>
+  <tr>
+    <td>Token not sniffed</td>
+    <td><code>Secure</code> (over HTTPS)</td>
+    <td>Must be enabled in production</td>
+  </tr>
+  <tr>
+    <td>CSRF mitigated</td>
+    <td><code>SameSite=Lax</code></td>
+    <td><code>Lax</code> still allows top-level GET navigations</td>
+  </tr>
+  <tr>
+    <td>Stolen token eventually useless</td>
+    <td><code>exp</code> claim + <code>SESSION_TTL_SECS</code></td>
+    <td>Valid until expiry — no per-request revocation</td>
+  </tr>
+</table>
+
+<div class="danger">
+  <strong>The JWT trade-off.</strong> Because the server keeps no session table, it cannot "log out" a token that has already been issued — logout only deletes the browser's copy. To truly revoke (e.g. on password change) you need extra server-side state such as a denylist or a token version. Also note that this app's JWT still validates after a password change until it expires; the <code>must_change</code> flag gates routes, but old tokens are not invalidated.
+</div>
+
+<h3>Timing</h3>
+<p>Login compares the password after looking up the user; a missing user returns early. In principle the tiny timing difference can reveal whether an email exists (user enumeration). argon2's cost dominates the comparison here, which blurs the signal, but a fully hardened login would do a dummy hash even for unknown users.</p>
+
+<!-- ============================================================= -->
+<h2 id="glossary">12. Glossary</h2>
+<dl>
+  <dt>Authentication vs authorization</dt>
+  <dd>Proving who you are vs. deciding what you may do.</dd>
+  <dt>Hash</dt>
+  <dd>A one-way fingerprint of data. Cannot be reversed; used to store passwords without keeping them.</dd>
+  <dt>Salt</dt>
+  <dd>Random per-password data mixed in before hashing so identical passwords hash differently.</dd>
+  <dt>argon2id</dt>
+  <dd>A modern, memory-hard password-hashing algorithm; the current recommended default.</dd>
+  <dt>PHC string</dt>
+  <dd>The self-describing <code>$argon2id$...</code> text that bundles algorithm, cost, salt, and hash.</dd>
+  <dt>Session</dt>
+  <dd>The state (here, a signed token) that lets later requests be recognized without re-entering the password.</dd>
+  <dt>JWT</dt>
+  <dd>JSON Web Token: a signed, base64url, three-part token carrying claims.</dd>
+  <dt>Claim</dt>
+  <dd>A name/value assertion inside a JWT payload, e.g. <code>sub</code>, <code>exp</code>, <code>must_change</code>.</dd>
+  <dt>HMAC / HS256</dt>
+  <dd>A keyed hash used to sign a JWT with one shared secret (symmetric).</dd>
+  <dt>Cookie</dt>
+  <dd>A server-set value the browser replays automatically; the transport for the session token.</dd>
+  <dt>HttpOnly / Secure / SameSite</dt>
+  <dd>Cookie flags that block script access, require HTTPS, and limit cross-site sending respectively.</dd>
+  <dt>Middleware</dt>
+  <dd>Code wrapping a handler that can inspect, reject, or forward the request.</dd>
+  <dt>CSRF</dt>
+  <dd>Cross-Site Request Forgery: another site making the browser silently send an authenticated request.</dd>
+  <dt>XSS</dt>
+  <dd>Cross-Site Scripting: injected script running in your origin; <code>HttpOnly</code> limits its access to the token.</dd>
+  <dt>TTL</dt>
+  <dd>Time-to-live; here how long a session token stays valid.</dd>
+</dl>
+
+<footer>
+  <p>Companion to <code>src/auth.rs</code> in the <strong>axum-streaming</strong> project. Line references are approximate and may drift as the file changes.</p>
+</footer>
+
+</div>
+</body>
+</html>

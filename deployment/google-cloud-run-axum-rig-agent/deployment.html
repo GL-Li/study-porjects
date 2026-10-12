@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>axum-streaming — Deployment Guide</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --ink: #e2e8f0; --muted: #94a3b8;
+    --accent: #38bdf8; --accent2: #34d399; --warn: #fbbf24; --border: #334155;
+    --code-bg: #0b1220;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.65 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 22px 100px; }
+  header.hero { border-bottom: 1px solid var(--border); padding-bottom: 22px; margin-bottom: 28px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.4px; }
+  h2 { font-size: 22px; margin: 44px 0 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+  h3 { font-size: 17px; margin: 26px 0 8px; color: var(--accent); }
+  p, li { color: var(--ink); }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e2e8f0; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; }
+  pre code { background: none; border: 0; padding: 0; color: #cbd5e1; font-size: 12.5px; line-height: 1.55; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--accent); font-weight: 600; }
+  td code { white-space: nowrap; }
+  .toc { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 22px; margin: 18px 0 0; padding: 0; list-style: none; }
+  .toc a { color: var(--muted); }
+  .toc a:hover { color: var(--accent); }
+  .note { border-left: 3px solid var(--accent2); background: rgba(52,211,153,.08); padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+  .warn { border-left: 3px solid var(--warn); background: rgba(251,191,36,.08); padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+  .pill { display: inline-block; font-size: 11px; letter-spacing: .4px; text-transform: uppercase; color: #0b1220; background: var(--accent); border-radius: 999px; padding: 2px 9px; font-weight: 700; }
+  .pill.green { background: var(--accent2); }
+  .pill.warn { background: var(--warn); }
+  footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+  ul.clean { padding-left: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>axum-streaming — Deployment Guide</h1>
+  <p class="muted">Rust / Axum SSE chat service on Google Cloud Run, authenticated by email&nbsp;+&nbsp;password, with a Google Cloud Storage-backed user store and automatic idle shutdown.</p>
+  <ul class="toc">
+    <li><a href="#overview">1. Overview</a></li>
+    <li><a href="#rust">2. Rust code changes</a></li>
+    <li><a href="#local">3. Build &amp; run locally</a></li>
+    <li><a href="#docker">4. Container image</a></li>
+    <li><a href="#gcp">5. GCP one-time setup</a></li>
+    <li><a href="#deploy">6. Deploy with Cloud Build</a></li>
+    <li><a href="#verify">7. Verify</a></li>
+    <li><a href="#auth">8. Authentication model</a></li>
+    <li><a href="#cost">9. Cost control &amp; scripts</a></li>
+    <li><a href="#env">10. Environment variables</a></li>
+    <li><a href="#concepts">11. Concepts glossary</a></li>
+    <li><a href="#gotchas">12. Migration gotchas</a></li>
+  </ul>
+</header>
+
+<!-- ============================================================= -->
+<h2 id="overview">1. Overview</h2>
+<p>The service started as a minimal, public Axum endpoint that streamed a <a href="https://github.com/0xPlaygrounds/rig">Rig</a> agent's reply token-by-token. It became a small, cost-conscious, authenticated product deployed to Cloud Run.</p>
+
+<pre><code>Browser ──HTTPS──▶ Cloud Run service "axum-streaming"
+                    │
+                    ├── GET  /                → chat UI (session required)
+                    ├── POST /chat            → SSE stream from Rig → DeepSeek
+                    ├── GET/POST /login       → argon2id check, JWT cookie
+                    ├── GET/POST /change-password
+                    ├── POST /logout
+                    └── GET  /health          → probe target
+                    │
+                    ├── Secret Manager .. DEEPSEEK_API_KEY
+                    │                     SESSION_SECRET
+                    └── Cloud Storage ... users.json
+                                          { email, argon2 hash, must_change }</code></pre>
+
+<p>Design constraints that drove the shape:</p>
+<ul class="clean">
+  <li><strong>Stateless compute.</strong> Cloud Run instances come and go, so users and sessions must live outside the container. Sessions are self-contained signed JWTs; users live in a single GCS object.</li>
+  <li><strong>Cost.</strong> Scale to zero, a hard cap of 5 instances, and an in-app idle watchdog that exits after 30 minutes without traffic.</li>
+  <li><strong>Secrets never in the image.</strong> Both the DeepSeek key and the session-signing key come from Secret Manager at runtime.</li>
+</ul>
+
+<!-- ============================================================= -->
+<h2 id="rust">2. Rust code changes</h2>
+
+<h3>2.1 Fail fast on a missing key</h3>
+<p>Rig 0.43 accepts an empty <code>DEEPSEEK_API_KEY</code> and only fails with a 401 on the first request. Reject it at startup instead:</p>
+<pre><code>if std::env::var("DEEPSEEK_API_KEY").unwrap_or_default().trim().is_empty() {
+    return Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "DEEPSEEK_API_KEY is not set or empty.",
+    ).into());
+}</code></pre>
+
+<h3>2.2 Bind for containers</h3>
+<pre><code>let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
+let port = std::env::var("PORT").unwrap_or_else(|_| "3000".into());
+let listener = TcpListener::bind(format!("{host}:{port}")).await?;</code></pre>
+
+<h3>2.3 Health endpoint</h3>
+<pre><code>.route("/health", get(|| async { "ok" }))</code></pre>
+
+<h3>2.4 Idle self-shutdown (30 min)</h3>
+<p>A middleware records the last non-health request in an <code>AtomicU64</code>; a background task signals a <code>watch</code> channel; <code>axum::serve</code> shuts down gracefully. Health probes are excluded so they cannot keep the process alive.</p>
+<pre><code>let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
+tokio::spawn(async move {
+    let mut ticker = tokio::time::interval(Duration::from_secs(tick));
+    loop {
+        ticker.tick().await;
+        let idle = now_secs() - last_activity.load(Ordering::Relaxed);
+        if idle &gt;= idle_timeout { let _ = shutdown_tx.send(true); return; }
+    }
+});
+axum::serve(listener, app)
+    .with_graceful_shutdown(async move { let _ = shutdown_rx.changed().await; })
+    .await?;</code></pre>
+
+<h3>2.5 Authentication module (<code>src/auth.rs</code>)</h3>
+<ul class="clean">
+  <li><strong>Hashing</strong> — argon2id via the <code>argon2</code> crate.</li>
+  <li><strong>Sessions</strong> — HS256 JWT from <code>jsonwebtoken</code>, carried in a <code>session</code> cookie (<code>HttpOnly; Secure; SameSite=Lax</code>). Claims: <code>sub</code>, <code>exp</code>, <code>must_change</code>.</li>
+  <li><strong>Store</strong> — one JSON document. With <code>USERS_BUCKET</code> set it is a GCS object read/written through the GCS JSON API using a token from the metadata server; otherwise a local file.</li>
+  <li><strong>Seed</strong> — on first run with no store, seed <code>AUTH_EMAILS</code> with random temporary passwords and <code>must_change_password = true</code>, and print them once.</li>
+  <li><strong>Concurrency</strong> — the seed upload uses <code>ifGenerationMatch=0</code> so racing instances cannot both create it.</li>
+</ul>
+<pre><code>// password hashing
+let salt = SaltString::generate(&amp;mut OsRng);
+let hash = Argon2::default()
+    .hash_password(password.as_bytes(), &amp;salt)?.to_string();
+
+// session
+encode(&amp;Header::default(), &amp;claims, &amp;EncodingKey::from_secret(&amp;secret))?;
+
+// GCS read (Cloud Run metadata token)
+GET https://storage.googleapis.com/storage/v1/b/{bucket}/o/users.json?alt=media
+Authorization: Bearer &lt;metadata-server-token&gt;</code></pre>
+
+<h3>2.6 Dependencies added</h3>
+<table>
+  <thead><tr><th>Crate</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td><code>argon2</code></td><td>Password hashing.</td></tr>
+    <tr><td><code>jsonwebtoken</code></td><td>Signed session cookies.</td></tr>
+    <tr><td><code>rand_core</code> (feature <code>getrandom</code>)</td><td><code>OsRng</code> for salts and temp passwords.</td></tr>
+    <tr><td><code>reqwest</code> (features <code>json</code>, <code>rustls</code>)</td><td>GCS JSON API over the metadata token.</td></tr>
+    <tr><td><code>serde_json</code></td><td>User document + metadata responses.</td></tr>
+    <tr><td><code>tokio</code> features <code>time</code>, <code>sync</code>, <code>fs</code></td><td>Idle timer, shutdown signal, file store.</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================= -->
+<h2 id="local">3. Build &amp; run locally</h2>
+<pre><code>cargo build --release
+
+export SESSION_SECRET="$(openssl rand -base64 32)"
+export COOKIE_SECURE=false        # plain HTTP locally
+export USERS_FILE=./users.json    # file-backed store
+PORT=3977 cargo run --release</code></pre>
+<p>First run prints two temporary passwords (one per seeded email) and forces a password change at login. The <code>Secure</code> flag must be off locally or the browser drops the cookie.</p>
+
+<!-- ============================================================= -->
+<h2 id="docker">4. Container image</h2>
+<p>Multi-stage build: <code>rust:1.95-slim</code> compiles the binary, <code>debian:trixie-slim</code> is the runtime. Dependencies are built in their own layer for caching; the final image runs as UID <code>10001</code>.</p>
+<pre><code>docker build -t axum-streaming .
+
+docker run --rm -p 3977:3977 \
+  -e DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \
+  -e SESSION_SECRET="$SESSION_SECRET" \
+  -e COOKIE_SECURE=false \
+  axum-streaming</code></pre>
+<div class="note"><code>include_str!</code> bakes the HTML pages into the binary, so <code>static/</code> only needs to exist at build time, not at runtime.</div>
+
+<!-- ============================================================= -->
+<h2 id="gcp">5. GCP one-time setup</h2>
+<p>Everything below is run once per project. Substitute your project id.</p>
+<pre><code>PROJECT=axum-streaming-6187
+REGION=us-central1
+
+gcloud config set project "$PROJECT"
+
+gcloud services enable \
+  run.googleapis.com artifactregistry.googleapis.com \
+  cloudbuild.googleapis.com secretmanager.googleapis.com</code></pre>
+
+<h3>Registry</h3>
+<pre><code>gcloud artifacts repositories create axum \
+  --repository-format=docker --location="$REGION"</code></pre>
+
+<h3>Secrets</h3>
+<pre><code>printf '%s' "$DEEPSEEK_API_KEY" | gcloud secrets create deepseek-api-key --data-file=-
+openssl rand -base64 32 | tr -d '\n' | gcloud secrets create session-secret --data-file=-</code></pre>
+
+<h3>User store bucket + IAM</h3>
+<pre><code>PROJECT_NUMBER=$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')
+BUCKET="axum-streaming-users-${PROJECT}"
+gcloud storage buckets create "gs://${BUCKET}" --location="$REGION"
+gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"</code></pre>
+
+<h3>Cloud Build permissions</h3>
+<pre><code>CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+for ROLE in roles/run.admin roles/artifactregistry.writer \
+            roles/iam.serviceAccountUser roles/secretmanager.secretAccessor; do
+  gcloud projects add-iam-policy-binding "$PROJECT" \
+    --member="serviceAccount:${CB_SA}" --role="$ROLE" --quiet
+done</code></pre>
+<p class="muted">Leave the bucket empty; the service seeds it on first start and prints the temporary passwords to its logs.</p>
+
+<!-- ============================================================= -->
+<h2 id="deploy">6. Deploy with Cloud Build</h2>
+<pre><code>gcloud builds submit --config cloudbuild.yaml</code></pre>
+<p><code>cloudbuild.yaml</code> runs four steps:</p>
+<ol class="clean">
+  <li><strong>ensure-repo</strong> — create the Artifact Registry repo if absent.</li>
+  <li><strong>build</strong> — <code>docker build</code>, tagged <code>:$BUILD_ID</code> and <code>:latest</code>.</li>
+  <li><strong>push</strong> — push all tags to Artifact Registry.</li>
+  <li><strong>deploy</strong> — <code>gcloud run deploy</code> with secrets, env vars, probes, and scaling.</li>
+</ol>
+<pre><code># key deploy flags
+--set-secrets=DEEPSEEK_API_KEY=deepseek-api-key:latest,SESSION_SECRET=session-secret:latest
+--set-env-vars=IDLE_TIMEOUT_SECS=1800,USERS_BUCKET=axum-streaming-users-$PROJECT_ID,USERS_OBJECT=users.json,COOKIE_SECURE=true
+--port=8080 --timeout=3600 --concurrency=20 --min-instances=0 --max-instances=5
+--startup-probe=httpGet.path=/health,httpGet.port=8080
+--liveness-probe=httpGet.path=/health,httpGet.port=8080</code></pre>
+<div class="warn">Tags use <code>$BUILD_ID</code>, not <code>$SHORT_SHA</code>. <code>$SHORT_SHA</code> is only populated for Git-triggered builds; on a manual <code>gcloud builds submit</code> it is empty and produces the invalid tag <code>…/image:</code>.</div>
+
+<!-- ============================================================= -->
+<h2 id="verify">7. Verify</h2>
+<pre><code>URL=$(gcloud run services describe axum-streaming \
+  --region=us-central1 --format='value(status.url)')
+
+curl -s $URL/health                                  # 200 ok
+curl -s -o /dev/null -w '%{http_code}\n' $URL/        # 303 -> /login
+curl -s -o /dev/null -w '%{http_code}\n' $URL/login   # 200</code></pre>
+<p>Sign in with a temporary password; the first response redirects to <code>/change-password</code>, and <code>/chat</code> returns <code>403</code> until the password is changed and <code>401</code> without a session.</p>
+<p>Retrieve the seeded temporary passwords from the logs:</p>
+<pre><code>gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="axum-streaming" AND textPayload:"Temporary passwords"' \
+  --limit=1 --format='value(textPayload)' --freshness=1d</code></pre>
+
+<!-- ============================================================= -->
+<h2 id="auth">8. Authentication model</h2>
+<table>
+  <thead><tr><th>Concern</th><th>Choice</th></tr></thead>
+  <tbody>
+    <tr><td>Password storage</td><td>argon2id PHC strings inside the JSON document.</td></tr>
+    <tr><td>Session</td><td>HS256 JWT, <code>exp</code> checked on decode; no server-side session table.</td></tr>
+    <tr><td>Cookie</td><td><code>session</code>, <code>HttpOnly</code>, <code>SameSite=Lax</code>, <code>Secure</code> (toggle with <code>COOKIE_SECURE</code>).</td></tr>
+    <tr><td>Authorization</td><td>Only emails in <code>AUTH_EMAILS</code>; seeded accounts are gated behind a password change.</td></tr>
+    <tr><td>Persistence</td><td><code>users.json</code> in GCS, written on password change.</td></tr>
+    <tr><td>CSRF</td><td>Mitigated by <code>SameSite=Lax</code>. Login is not rate-limited.</td></tr>
+  </tbody>
+</table>
+<div class="warn">The service is deployed with <code>--allow-unauthenticated</code> so the login page is reachable — the app itself enforces the account list. Every request still spends your DeepSeek credits, so cap instances and consider Cloud Armor.</div>
+
+<!-- ============================================================= -->
+<h2 id="cost">9. Cost control &amp; scripts</h2>
+<ul class="clean">
+  <li><code>--min-instances=0</code> — scale to zero; idle time is free.</li>
+  <li><code>IDLE_TIMEOUT_SECS=1800</code> — the app exits after 30 min without a request (probes excluded).</li>
+  <li><code>--max-instances=5</code> — bounds burst spend.</li>
+</ul>
+<pre><code>scripts/stop.sh    # delete the Cloud Run service (no paused state exists)
+scripts/start.sh   # redeploy the existing :latest image</code></pre>
+<p>Both accept <code>SERVICE= REGION= REPO= SECRET= SESSION_SECRET= PROJECT=</code> overrides.</p>
+
+<!-- ============================================================= -->
+<h2 id="env">10. Environment variables</h2>
+<table>
+  <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>DEEPSEEK_API_KEY</code></td><td>— required</td><td>Provider key.</td></tr>
+    <tr><td><code>SESSION_SECRET</code></td><td>— required</td><td>HMAC key for session cookies (&ge; 16 chars).</td></tr>
+    <tr><td><code>SESSION_TTL_SECS</code></td><td><code>28800</code></td><td>Session lifetime.</td></tr>
+    <tr><td><code>COOKIE_SECURE</code></td><td><code>true</code></td><td><code>false</code> for local plain HTTP.</td></tr>
+    <tr><td><code>AUTH_EMAILS</code></td><td>two seeded addresses</td><td>Accounts created on first run.</td></tr>
+    <tr><td><code>USERS_BUCKET</code></td><td>—</td><td>GCS bucket for the user document.</td></tr>
+    <tr><td><code>USERS_OBJECT</code></td><td><code>users.json</code></td><td>Object name.</td></tr>
+    <tr><td><code>USERS_FILE</code></td><td><code>users.json</code></td><td>Local store when no bucket is set.</td></tr>
+    <tr><td><code>IDLE_TIMEOUT_SECS</code></td><td><code>1800</code></td><td>Idle shutdown; <code>0</code> disables.</td></tr>
+    <tr><td><code>HOST</code> / <code>PORT</code></td><td><code>0.0.0.0</code> / <code>3000</code></td><td>Bind address (Cloud Run injects <code>PORT=8080</code>).</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================= -->
+<h2 id="concepts">11. Concepts glossary</h2>
+<table>
+  <thead><tr><th>Concept</th><th>What it means here</th></tr></thead>
+  <tbody>
+    <tr><td>Serverless container</td><td>Cloud Run runs the Docker image, scales instances by request load, and can drop to zero.</td></tr>
+    <tr><td>Artifact Registry</td><td>Private Docker registry for the built image.</td></tr>
+    <tr><td>Cloud Build</td><td>Builds the image and runs <code>gcloud run deploy</code>; steps execute under its own service account.</td></tr>
+    <tr><td>Secret Manager</td><td>Stores <code>DEEPSEEK_API_KEY</code> and <code>SESSION_SECRET</code>; mounted as env vars at runtime.</td></tr>
+    <tr><td>Service account / IAM</td><td>The runtime account (Compute default SA) needs <code>storage.objectAdmin</code> on the bucket and <code>secretAccessor</code> on the secrets.</td></tr>
+    <tr><td>Metadata server</td><td><code>metadata.google.internal</code> hands the container a short-lived access token, used for GCS calls.</td></tr>
+    <tr><td>GCS JSON API</td><td>Plain HTTPS reads/writes; <code>ifGenerationMatch=0</code> gives create-only uploads.</td></tr>
+    <tr><td>SSE</td><td>Server-Sent Events carry the streaming reply; proxies must not buffer.</td></tr>
+    <tr><td>JWT session</td><td>Signed, self-contained login state — essential because instances are ephemeral.</td></tr>
+    <tr><td>Scale to zero</td><td>No instances (and no compute cost) when idle; the first request pays a cold start.</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================= -->
+<h2 id="gotchas">12. Migration gotchas</h2>
+<table>
+  <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr><td><code>unresolved import StreamedAssistantContent</code></td><td>Rig 0.43 removed it.</td><td>Match <code>Item::Event(StreamEvent::Text { .. })</code>.</td></tr>
+    <tr><td><code>cannot find Client in deepseek</code></td><td>Renamed.</td><td><code>deepseek::from_env()</code> + <code>AgentBuilder::new(client.completion(..))</code>.</td></tr>
+    <tr><td>UI shows <code>Error: }</code></td><td>Multi-line provider errors; the JS kept only the last <code>data:</code> line.</td><td>Join all <code>data:</code> lines per the SSE spec.</td></tr>
+    <tr><td>Container starts, then 401 on first prompt</td><td>Empty <code>DEEPSEEK_API_KEY</code> accepted at startup.</td><td>Validate the key before serving.</td></tr>
+    <tr><td><code>invalid reference format …image:</code></td><td><code>$SHORT_SHA</code> empty on manual builds.</td><td>Tag with <code>$BUILD_ID</code>.</td></tr>
+    <tr><td><code>IAM_PERMISSION_DENIED</code> creating the repo</td><td>API propagation right after enabling.</td><td>Wait and retry; pre-create the repo.</td></tr>
+    <tr><td><code>Dockerfile not found</code> in Cloud Build</td><td><code>.gcloudignore</code> excluded it.</td><td>Keep <code>Dockerfile</code> in the uploaded context.</td></tr>
+    <tr><td>Owner cannot enable Cloud Run API</td><td>Wrong project selected.</td><td>Confirm <code>gcloud projects list</code> and switch to a project you own.</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  <span class="pill green">deployed</span>
+  <span class="pill">Cloud Run</span>
+  <span class="pill">Cloud Build</span>
+  <span class="pill">Secret Manager</span>
+  <span class="pill">Cloud Storage</span>
+  <p class="muted">Project <code>axum-streaming-6187</code> · region <code>us-central1</code> · service <code>axum-streaming</code>. This file is generated documentation; no credentials are included.</p>
+</footer>
+
+</div>
+</body>
+</html>

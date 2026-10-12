@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: system-ui, sans-serif; background: #f8fafc; }
+  .card { width: 100%; max-width: 360px; background: #fff; padding: 28px; border-radius: 14px; box-shadow: 0 10px 30px rgba(15, 23, 42, .08); }
+  h1 { margin: 0 0 4px; font-size: 20px; }
+  p.sub { margin: 0 0 20px; color: #64748b; font-size: 14px; }
+  label { display: block; font-size: 13px; color: #334155; margin: 12px 0 6px; }
+  input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px; }
+  button { width: 100%; margin-top: 20px; padding: 11px; border: none; border-radius: 8px; background: #2563eb; color: #fff; font-size: 15px; cursor: pointer; }
+  .error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; padding: 10px 12px; border-radius: 8px; font-size: 14px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>Sign in</h1>
+  <p class="sub">Authorized accounts only.</p>
+  <p id="error" class="error" hidden></p>
+  <form method="post" action="/login">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="username" required autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+  </form>
+</main>
+<script>
+  const messages = {
+    credentials: 'Invalid email or password.',
+    nousers: 'No accounts are configured yet.',
+    storage: 'Server error. Please try again.'
+  };
+  const code = new URLSearchParams(location.search).get('error');
+  if (code) {
+    const el = document.getElementById('error');
+    el.textContent = messages[code] || 'Sign-in failed.';
+    el.hidden = false;
+  }
+</script>
+</body>
+</html>
